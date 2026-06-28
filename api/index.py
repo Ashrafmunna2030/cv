@@ -1,40 +1,96 @@
 from http.server import BaseHTTPRequestHandler
 import json
-import sys
 import os
+import sys
+import time
 
-# Add parent directory to path to import garena_api
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from garena_api import GarenaShopAPI
-
-# Default cookies - Vercel environment variable থেকে নিবে, না থাকলে ডিফল্ট ব্যবহার করবে
-DEFAULT_COOKIES = {
-    "source": os.environ.get("COOKIE_SOURCE", "mb"),
-    "region": os.environ.get("COOKIE_REGION", "MY"),
-    "language": os.environ.get("COOKIE_LANGUAGE", "en"),
-    "mspid2": os.environ.get("COOKIE_MSPID2", "ae0c8e51334bfb875f1eb0e33133cc7b"),
-    "_fbp": os.environ.get("COOKIE_FBP", "fb.1.1776001223054.798432025925868321"),
-    "_ga": os.environ.get("COOKIE_GA", "GA1.1.1335857066.1777050809"),
-    "_ga_9F1KGGRJHY": os.environ.get("COOKIE_GA_9F1KGGRJHY", "GS2.1.s1777050809$o1$g0$t1777050815$j54$l0$h0"),
-    "datadome": os.environ.get("COOKIE_DATADOME", "6ukWBivMKRC7_ksMDmJZvo~Kd8Gygg~55W1IuTcxwJB_rc03q4m5Zo30tHBkrwWNeeyzGAaIauCZSiWw2bu13a8qR2kt1JrqBFcKJGy5X6IewgFIHt92jg0Vtaw0eBfY"),
-    "__csrf__": os.environ.get("COOKIE_CSRF", "1CTkCrtNaEP00aQYNNCpYvPlxRco89Xa"),
-    "session_key": os.environ.get("COOKIE_SESSION_KEY", "angggqlz8nptju3xj5p4ntvrzlphk8m5"),
-}
+from garena_api import GarenaPlayerAPI
 
 class handler(BaseHTTPRequestHandler):
+    
     def do_GET(self):
         """Handle GET requests"""
-        # Parse URL path
         path = self.path
         
-        # Health check endpoint
-        if path == '/api/health' or path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            response = {"status": "success", "message": "API is running"}
+        if path == '/api/health' or path == '/':
+            self._send_response({
+                "status": "success",
+                "message": "Garena Fresh Cookie API - Per Request",
+                "version": "3.0",
+                "features": "Fresh cookie generated for EVERY request",
+                "endpoints": {
+                    "get_player": "/api/player/{uid}",
+                    "health": "/api/health"
+                }
+            })
+            return
+        
+        if path.startswith('/api/player/'):
+            uid = path.split('/api/player/')[1]
+            if uid:
+                result = self._fetch_player(uid)
+                self._send_response(result)
+                return
+        
+        self._send_response({"status": "error", "message": "Not found"}, 404)
+    
+    def do_POST(self):
+        """Handle POST requests"""
+        if self.path == '/api/player':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                data = json.loads(post_data)
+                uid = data.get('uid')
+                
+                if uid:
+                    result = self._fetch_player(uid)
+                else:
+                    result = {"status": "error", "message": "Missing 'uid'"}
+                
+                self._send_response(result)
+            except:
+                self._send_response({"status": "error", "message": "Invalid JSON"}, 400)
+        else:
+            self._send_response({"status": "error", "message": "Not found"}, 404)
+    
+    def do_OPTIONS(self):
+        """CORS preflight"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.end_headers()
+    
+    def _send_response(self, data: dict, status: int = 200):
+        """Send JSON response"""
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+    
+    def _fetch_player(self, uid: str) -> dict:
+        """Fetch player info with FRESH cookies"""
+        print(f"\n{'🔄'*20}")
+        print(f"🆕 NEW REQUEST - Generating fresh cookies")
+        print(f"🎯 UID: {uid}")
+        print(f"⏰ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        api = GarenaPlayerAPI()
+        result = api.get_player_info(uid)
+        
+        print(f"📤 Result: {result.get('status')}")
+        print(f"{'='*50}\n")
+        
+        return result            response = {"status": "success", "message": "API is running"}
             self.wfile.write(json.dumps(response).encode())
             return
         
