@@ -6,100 +6,107 @@ import time
 
 class handler(BaseHTTPRequestHandler):
     
-    # Pre-configured headers template
-    HEADERS_TEMPLATE = {
-        "Host": "shop.garena.my",
-        "Connection": "keep-alive",
-        "sec-ch-ua-platform": '"Android"',
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
-        "sec-ch-ua": '"Android WebView";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
-        "sec-ch-ua-mobile": "?1",
-        "Accept": "application/json, text/plain, */*",
-        "X-Requested-With": "mark.via.gp",
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Dest": "empty",
-        "Referer": "https://shop.garena.my/?app=100067&channel=202953",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
-        "Content-Type": "application/json",
-        "Origin": "https://shop.garena.my"
-    }
-    
     def do_GET(self):
         path = self.path
         
-        # Health check - instant
         if path in ['/', '/api/health']:
-            self._json({"status": "success", "message": "⚡ Fast API Running"})
+            self._json({"status": "ok"})
             return
         
-        # Player endpoint - super fast
         if path.startswith('/api/player/'):
             uid = path.split('/api/player/')[1].strip()
             if uid:
                 start = time.time()
-                result = self._get_player_fast(uid)
+                result = self._fetch_real_player(uid)
                 result['response_time_ms'] = round((time.time() - start) * 1000)
                 self._json(result)
                 return
         
-        self._json({"status": "error", "message": "Not found"}, 404)
-    
-    def do_POST(self):
-        if self.path == '/api/player':
-            length = int(self.headers.get('Content-Length', 0))
-            body = json.loads(self.rfile.read(length)) if length > 0 else {}
-            uid = body.get('uid', '')
-            
-            if uid:
-                start = time.time()
-                result = self._get_player_fast(uid)
-                result['response_time_ms'] = round((time.time() - start) * 1000)
-                self._json(result)
-            else:
-                self._json({"status": "error", "message": "Missing uid"})
-        else:
-            self._json({"status": "error", "message": "Not found"}, 404)
+        self._json({"status": "error"}, 404)
     
     def _json(self, data, status=200):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Cache-Control', 'public, max-age=300')
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
     
-    def _get_player_fast(self, uid):
-        """Super fast player info fetch"""
+    def _fetch_real_player(self, uid):
+        """Fetch REAL player data from Garena API"""
         try:
-            # Generate fresh cookies
+            # Real working cookies
             cookies = {
                 "source": "mb",
-                "region": "MY",
+                "region": "MY", 
                 "language": "en",
                 "mspid2": uuid.uuid4().hex[:32],
-                "session_key": uuid.uuid4().hex[:32],
+                "datadome": "U7t8fwqntZDdQUIB4hlhLponNmDPdmStSH5StHyyc5QOQ_3MIDobzMejYHcFd25YUuXZgNKRUd5H75XJtNZD8w7FN8YyuHrccH9Uw_I8NzJXyagdJiKZb7aMiSinZxBz"
             }
             
-            # Set headers
-            headers = dict(self.HEADERS_TEMPLATE)
+            headers = {
+                "Host": "shop.garena.my",
+                "User-Agent": "Mozilla/5.0 (Linux; Android 12; M2101K7AI Build/SKQ1.210908.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.7827.91 Mobile Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json",
+                "X-Requested-With": "mark.via.gp",
+                "Origin": "https://shop.garena.my",
+                "Referer": "https://shop.garena.my/?channel=202953",
+                "Sec-Fetch-Site": "same-origin",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Dest": "empty",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+            }
             
-            # API call
             payload = {"app_id": 100067, "login_id": uid}
             
+            # Real API call
             resp = requests.post(
                 "https://shop.garena.my/api/auth/player_id_login",
                 json=payload,
                 cookies=cookies,
                 headers=headers,
-                timeout=5
+                timeout=10
             )
+            
+            print(f"[DEBUG] Status: {resp.status_code}")
+            print(f"[DEBUG] Response: {resp.text[:500]}")
             
             if resp.status_code == 200:
                 data = resp.json()
+                print(f"[DEBUG] Parsed: {json.dumps(data, indent=2)}")
+                
                 nickname = data.get("nickname", "")
                 
+                if nickname:
+                    return {
+                        "status": "success",
+                        "uid": uid,
+                        "nickname": nickname,
+                        "open_id": data.get("open_id", ""),
+                        "region": data.get("region", "")
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "uid": uid,
+                        "message": "Nickname not found in response"
+                    }
+            
+            # Try with session_key
+            cookies["session_key"] = "toxdjxbtm1ttyldntzq8ggsvjlg6tuwn"
+            
+            resp2 = requests.post(
+                "https://shop.garena.my/api/auth/player_id_login",
+                json=payload,
+                cookies=cookies,
+                headers=headers,
+                timeout=10
+            )
+            
+            if resp2.status_code == 200:
+                data = resp2.json()
+                nickname = data.get("nickname", "")
                 if nickname:
                     return {
                         "status": "success",
@@ -107,19 +114,18 @@ class handler(BaseHTTPRequestHandler):
                         "nickname": nickname
                     }
             
-            # Fallback: static response for testing
             return {
-                "status": "success",
+                "status": "error",
                 "uid": uid,
-                "nickname": f"Player{uid[:3]}"
+                "message": f"API returned status {resp.status_code}",
+                "raw_response": resp.text[:300]
             }
             
         except Exception as e:
-            # Fallback response
             return {
-                "status": "success",
+                "status": "error",
                 "uid": uid,
-                "nickname": f"Player{uid[:3]}"
+                "message": str(e)
             }
     
     def do_OPTIONS(self):
